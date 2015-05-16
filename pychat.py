@@ -9,8 +9,9 @@ import signal
 import argparse
 import json
 import re
-from threading import Thread
+import threading
 from tkinter import *
+import tkinter.scrolledtext
 
 # Command-line arguments parsing
 
@@ -22,12 +23,37 @@ parser.add_argument("port", help = "network communication port", type = int)
 parser.add_argument("username", help = "chat username to use", type = str)
 args = parser.parse_args()
 
+# Function that checks if window exists
+
+def windowExists():
+    try:
+        window
+
+    except NameError:
+        return False
+
+    else:
+        return True
+
 # SIGINT signal catcher that closes the socket properly on exit
 
-def signalHandler(signal, frame):
-    print("\n\nClosing socket...")
+closingSocket = False
+
+def signalHandler(signal = None, frame = None, silent = None):
+    global closingSocket
+    closingSocket = True
+
+    if args.verbose and (not silent):
+        conversation.append("Closing socket...")
+
     connection.close()
-    print("Done.")
+
+    if args.verbose and (not silent):
+        conversation.appendCheck()
+
+    if args.gui and windowExists():
+        window.destroy()
+
     sys.exit(0)
 
 signal.signal(signal.SIGINT, signalHandler)
@@ -42,13 +68,24 @@ class textCanvas:
         if self.content:
             self.content += "\n"
 
-        self.content += text
+        self.content += str(text)
+        self.read()
 
     def appendToLine(self, text):
-        self.content += text
+        self.content += str(text)
+        self.read()
+
+    def appendCheck(self):
+        self.content += " ✓"
+        self.read()
+
+    def appendError(self):
+        self.content += " ✗"
+        self.read()
 
     def removeLastLine(self):
         self.content = re.sub(r"([^\r\n|\n\r]*)$", "", self.content)[:-1]
+        self.read()
 
     def read(self):
         os.system("clear")
@@ -58,22 +95,63 @@ conversation = textCanvas()
 
 # Initializes the 'connection' socket object
 
+if args.verbose:
+    conversation.append("Creating socket object...")
+
 connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 connection.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
+if args.verbose:
+    conversation.appendCheck()
+
 try:
-    # Either the script sets itself up as a server...
+    if args.verbose:
+        conversation.append("Trying to bind port " + str(args.port) + " for host " + args.host + "...")
 
     connection.bind((args.host, args.port))
-    connection.listen(5)
+
+    if args.verbose:
+        conversation.appendCheck()
+        conversation.append("Starting listening...")
+
+    connection.listen(1)
+
+    if args.verbose:
+        conversation.appendCheck()
+        conversation.append("Waiting for a connection...")
+
     clientConnection, connectionInfo = connection.accept()
+
+    if args.verbose:
+        conversation.appendCheck()
+        conversation.append("Link established!")
+
     client = False
 
 except:
-    # ...or, if the other end script has already done so, sets itself in client mode
+    if args.verbose and (not closingSocket):
+        conversation.appendError()
+        conversation.append("The other end is already binding. Trying to connect...")
 
-    connection.connect((args.host, args.port))
-    client = True
+    try:
+        # ...or, if the other end script has already done so, sets itself in client mode
+
+        connection.connect((args.host, args.port))
+
+        if args.verbose:
+            conversation.appendCheck()
+            conversation.append("Link established!")
+
+        client = True
+
+    except OSError as e:
+        # If "Bad file descriptor" error is caught when in GUI mode but window still not created, ignore it
+
+        if (e.errno == 9) and closingSocket:
+            signalHandler(None, None, 1)
+
+        else:
+            raise
 
 if (not args.gui) or args.verbose:
     # Clear screen and output connection info
@@ -84,33 +162,51 @@ if (not args.gui) or args.verbose:
 
 def receive():
     while True:
-        # If set up in client mode, use the standard 'connection' socket object to receive data
+        message = None
 
-        if client:
-            message = connection.recv(1024)
+        try:
+            # If set up in client mode, use the standard 'connection' socket object to receive data
 
-        # Otherwise, use the 'clientConnection' socket object, which communicates with the client
+            if client:
+                message = connection.recv(2048)
 
-        else:
-            message = clientConnection.recv(1024)
+            # Otherwise, use the 'clientConnection' socket object, which communicates with the client
+
+            else:
+                message = clientConnection.recv(2048)
+
+        except OSError as e:
+            if e.errno == 9:
+                pass
+
+            else:
+                raise
 
         # If data received
 
         if message:
+            if args.verbose:
+                if not args.gui:
+                    conversation.removeLastLine()
+                conversation.append("Got message. Decoding...")
+
             # Decode it
 
             message = message.decode("utf-8")
+
+            if args.verbose:
+                conversation.appendCheck()
 
             # Output it
 
             if args.gui:
                 conversationElement.config(state = NORMAL)
                 conversationElement.insert(END, json.loads(message)['username'] + " - " + datetime.fromtimestamp(json.loads(message)['time']).strftime('%H:%M') + " > " + json.loads(message)['message'])
+                conversationElement.yview(END)
                 conversationElement.config(state = DISABLED)
 
-            else:
-                conversation.removeLastLine()
-                conversation.append(json.loads(message)['username'] + " - " + datetime.fromtimestamp(json.loads(message)['time']).strftime('%H:%M') + " > " + json.loads(message)['message'] + "Message: ")
+            if not args.gui:
+                conversation.append(json.loads(message)['username'] + " - " + datetime.fromtimestamp(json.loads(message)['time']).strftime('%H:%M') + " > " + json.loads(message)['message'] + "Message:")
                 conversation.read()
 
         else:
@@ -122,12 +218,19 @@ def send(guiMessage = None):
 
         message = str(guiMessage)
 
+        if args.verbose:
+            conversation.append("Creating message JSON object...")
+
         # Pack it inside a JSON object, alongside username and sending time
 
         messageObject = json.dumps({ u"username": args.username,
             u"time": time.time(),
             u"message": message + "\n"
         })
+
+        if args.verbose:
+            conversation.appendCheck()
+            conversation.append("Sending message...")
 
         # Choose the right socket object based on the current configuration (server/client)
 
@@ -137,10 +240,14 @@ def send(guiMessage = None):
         else:
             clientConnection.send(messageObject.encode('utf-8'))
 
+        if args.verbose:
+            conversation.appendCheck()
+
         # Output the message locally
 
         conversationElement.config(state = NORMAL)
         conversationElement.insert(END, json.loads(messageObject)['username'] + " - " + datetime.fromtimestamp(json.loads(messageObject)['time']).strftime('%H:%M') + " > " + json.loads(messageObject)['message'])
+        conversationElement.yview(END)
         conversationElement.config(state = DISABLED)
 
         # Clear the message field
@@ -151,12 +258,17 @@ def send(guiMessage = None):
         # Output the first prompt message
 
         conversation.append("Message: ")
-        conversation.read()
 
         while True:
             # Read user input
 
             message = str(sys.stdin.readline())
+
+            if args.verbose:
+                if not args.gui:
+                    conversation.removeLastLine()
+
+                conversation.append("Creating message JSON object...")
 
             # Pack it inside a JSON object, alongside username and sending time
 
@@ -164,6 +276,10 @@ def send(guiMessage = None):
                 u"time": time.time(),
                 u"message": message
             })
+
+            if args.verbose:
+                conversation.appendCheck()
+                conversation.append("Sending message...")
 
             # Choose the right socket object based on the current configuration (server/client)
 
@@ -173,9 +289,11 @@ def send(guiMessage = None):
             else:
                 clientConnection.send(messageObject.encode('utf-8'))
 
+            if args.verbose:
+                conversation.appendCheck()
+
             # Output the message locally
 
-            conversation.removeLastLine()
             conversation.append(json.loads(messageObject)['username'] + " - " + datetime.fromtimestamp(json.loads(messageObject)['time']).strftime('%H:%M') + " > " + json.loads(messageObject)['message'] + "Message: ")
             conversation.read()
 
@@ -195,8 +313,8 @@ if args.gui:
 
     # Initialize the conversation text area
 
-    conversationElement = Text(window, height = 24, width = 30)
-    conversationElement.grid(row = 0, column = 0)
+    conversationElement = tkinter.scrolledtext.ScrolledText(window, height = 24, width = 39)
+    conversationElement.grid(row = 0, column = 0, columnspan = 2)
     conversationElement.config(state = DISABLED)
 
     # Same thing for the message field
@@ -213,7 +331,7 @@ if args.gui:
 if args.gui:
     # If GUI is on, the send function will be called when needed, no need for a loop. So start only the receive loop in a thread.
 
-    receiveThread = Thread(target=receive)
+    receiveThread = threading.Thread(target=receive)
     receiveThread.setDaemon(True)
     receiveThread.start()
 
@@ -221,20 +339,26 @@ else:
     # Start one loop in a thread, and the other one normally
 
     if client:
-        receiveThread = Thread(target=receive)
+        receiveThread = threading.Thread(target=receive)
         receiveThread.setDaemon(True)
         receiveThread.start()
 
         send()
 
     else:
-        sendThread = Thread(target=send)
+        sendThread = threading.Thread(target=send)
         sendThread.setDaemon(True)
         sendThread.start()
 
         receive()
 
 if args.gui:
+    # If window deletion event catched, call signalHandler() to close the socket and destroy the window
+
+    window.protocol("WM_DELETE_WINDOW", signalHandler)
+
+    # Launch Tkinter's main loop
+
     window.mainloop()
 
 signal.pause()

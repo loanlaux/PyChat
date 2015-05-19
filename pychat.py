@@ -54,6 +54,9 @@ def signalHandler(signal = None, frame = None, silent = None):
     global closingSocket
     closingSocket = True
 
+    if not args.gui:
+        conversation.removeLastLine()
+
     if args.verbose and (not silent):
         conversation.append("Closing socket...")
 
@@ -327,13 +330,15 @@ if args.gui:
     window.resizable(width = False, height = False)
     window.geometry('300x400')
 
+    window.option_add("*Font", "Helvetica")
+
     # Create message field content object as new StringVar
 
     messageFieldContent = StringVar()
 
     # Initialize the conversation text area
 
-    conversationElement = tkinter.scrolledtext.ScrolledText(window, height = 24, width = 39)
+    conversationElement = tkinter.scrolledtext.ScrolledText(window, height = 24, width = 34)
     conversationElement.grid(row = 0, column = 0, columnspan = 2)
     conversationElement.config(state = DISABLED)
 

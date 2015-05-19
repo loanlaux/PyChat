@@ -1,4 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/python3
+
+""" A minimalistic peer-to-peer chat software. """
 
 import socket
 import time
@@ -12,6 +14,15 @@ import re
 import threading
 from tkinter import *
 import tkinter.scrolledtext
+
+__author__ = "Loan Laux"
+__copyright__ = "Copyright 2015"
+__credits__ = ["Stéphane Ranaivosoa", "Guillaume Liautard", "Bruno Masi"]
+__license__ = "MIT"
+__version__ = "0.1.0"
+__maintainer__ = "Loan Laux"
+__email__ = "contact@loanlaux.fr"
+__status__ = "Development"
 
 # Command-line arguments parsing
 
@@ -50,6 +61,9 @@ def signalHandler(signal = None, frame = None, silent = None):
 
     if args.verbose and (not silent):
         conversation.appendCheck()
+
+    else:
+        print("")
 
     if args.gui and windowExists():
         window.destroy()
@@ -108,7 +122,7 @@ try:
     if args.verbose:
         conversation.append("Trying to bind port " + str(args.port) + " for host " + args.host + "...")
 
-    connection.bind((args.host, args.port))
+    connection.bind(('', args.port))
 
     if args.verbose:
         conversation.appendCheck()
@@ -206,6 +220,9 @@ def receive():
                 conversationElement.config(state = DISABLED)
 
             if not args.gui:
+                if not args.verbose:
+                    conversation.removeLastLine()
+
                 conversation.append(json.loads(message)['username'] + " - " + datetime.fromtimestamp(json.loads(message)['time']).strftime('%H:%M') + " > " + json.loads(message)['message'] + "Message:")
                 conversation.read()
 
@@ -294,6 +311,9 @@ def send(guiMessage = None):
 
             # Output the message locally
 
+            if not args.verbose:
+                conversation.removeLastLine()
+
             conversation.append(json.loads(messageObject)['username'] + " - " + datetime.fromtimestamp(json.loads(messageObject)['time']).strftime('%H:%M') + " > " + json.loads(messageObject)['message'] + "Message: ")
             conversation.read()
 
@@ -303,7 +323,7 @@ if args.gui:
     # Initialize the window
 
     window = Tk()
-    window.title('Swagchat')
+    window.title('PyChat')
     window.resizable(width = False, height = False)
     window.geometry('300x400')
 

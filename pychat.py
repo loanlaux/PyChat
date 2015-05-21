@@ -9,6 +9,7 @@ from datetime import datetime
 import sys
 import os
 import signal
+import platform
 import argparse
 import json
 import re
@@ -94,11 +95,21 @@ class textCanvas:
         self.read()
 
     def appendCheck(self):
-        self.content += " ✓"
+        if platform.system() == "Linux" or "Darwin":
+            self.content += " ✓"
+
+        else:
+            self.content += " Done."
+
         self.read()
 
     def appendError(self):
-        self.content += " ✗"
+        if platform.system() == "Linux" or "Darwin":
+            self.content += " ✗"
+
+        else:
+            self.content += " Failed."
+            
         self.read()
 
     def removeLastLine(self):
@@ -106,7 +117,12 @@ class textCanvas:
         self.read()
 
     def read(self):
-        os.system("clear")
+        if platform.system() == "Linux" or "Darwin":
+            os.system("clear")
+
+        else:
+            os.system("cls")
+
         print(self.content)
 
 conversation = textCanvas()

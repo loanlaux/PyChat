@@ -139,10 +139,48 @@ if args.verbose:
     conversation.appendCheck()
 
 try:
-    if args.verbose:
-        conversation.append("Trying to bind port " + str(args.port) + " for host " + args.host + "...")
+    if args.verbose and (not closingSocket):
+        conversation.append("Trying to connect to " + str(args.host) + ":" + str(args.port) + "...")
 
-    connection.bind((args.host, args.port))
+    # ...or, if the other end script has already done so, sets itself in client mode
+
+    connection.connect((args.host, args.port))
+
+    if args.verbose:
+        conversation.appendCheck()
+        conversation.append("Link established!")
+
+    client = True
+
+except:
+    if args.verbose:
+        conversation.appendError()
+        conversation.append("The other end doesn't seem to be waiting for us.")
+        conversation.append("Reseting socket...")
+
+    try:
+        connection.close()
+        connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        connection.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        if args.verbose:
+            conversation.appendCheck()
+
+    except Exception as e:
+        conversation.appendError()
+        conversation.append(e)
+        signalHandler(None, None, 1)
+
+    if args.verbose:
+        conversation.append("Binding port " + str(args.port) + "...")
+
+    try:
+        connection.bind(('', args.port))
+
+    except Exception as e:
+        conversation.appendError()
+        conversation.append(e)
+        signalHandler(None, None, 1)
 
     if args.verbose:
         conversation.appendCheck()
@@ -161,31 +199,6 @@ try:
         conversation.append("Link established!")
 
     client = False
-
-except:
-    if args.verbose and (not closingSocket):
-        conversation.appendError()
-        conversation.append("The other end is already binding. Trying to connect...")
-
-    try:
-        # ...or, if the other end script has already done so, sets itself in client mode
-
-        connection.connect((args.host, args.port))
-
-        if args.verbose:
-            conversation.appendCheck()
-            conversation.append("Link established!")
-
-        client = True
-
-    except OSError as e:
-        # If "Bad file descriptor" error is caught when in GUI mode but window still not created, ignore it
-
-        if (e.errno == 9) and closingSocket:
-            signalHandler(None, None, 1)
-
-        else:
-            raise
 
 if (not args.gui) or args.verbose:
     # Clear screen and output connection info

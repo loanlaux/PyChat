@@ -126,7 +126,7 @@ try:
     if args.verbose:
         conversation.append("Trying to bind port " + str(args.port) + " for host " + args.host + "...")
 
-    connection.bind(('', args.port))
+    connection.bind((args.host, args.port))
 
     if args.verbose:
         conversation.appendCheck()

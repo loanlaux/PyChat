@@ -95,7 +95,7 @@ class textCanvas:
         self.read()
 
     def appendCheck(self):
-        if platform.system() == "Linux" or "Darwin":
+        if os.name == "posix":
             self.content += " ✓"
 
         else:
@@ -104,12 +104,12 @@ class textCanvas:
         self.read()
 
     def appendError(self):
-        if platform.system() == "Linux" or "Darwin":
+        if os.name == "posix":
             self.content += " ✗"
 
         else:
             self.content += " Failed."
-            
+
         self.read()
 
     def removeLastLine(self):
@@ -117,7 +117,7 @@ class textCanvas:
         self.read()
 
     def read(self):
-        if platform.system() == "Linux" or "Darwin":
+        if os.name == "posix":
             os.system("clear")
 
         else:

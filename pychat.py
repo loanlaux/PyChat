@@ -368,7 +368,15 @@ if args.gui:
 
     # Initialize the conversation text area
 
-    conversationElement = tkinter.scrolledtext.ScrolledText(window, height = 24, width = 34)
+    if sys.platform == "darwin":
+        conversationElement = tkinter.scrolledtext.ScrolledText(window, height = 24, width = 34)
+
+    elif sys.platform == "linux" or sys.platform == "linux2":
+        conversationElement = tkinter.scrolledtext.ScrolledText(window, height = 17, width = 30)
+
+    else:
+        conversationElement = tkinter.scrolledtext.ScrolledText(window, height = 20, width = 30)
+
     conversationElement.grid(row = 0, column = 0, columnspan = 2)
     conversationElement.config(state = DISABLED)
 
@@ -380,7 +388,11 @@ if args.gui:
 
     # And finally the send button
 
-    sendButton = Button(window, text = "Send", width = 6, command = lambda: send(messageFieldContent.get()))
+    if sys.platform == "linux" or sys.platform == "linux2":
+        sendButton = Button(window, text = "Send", width = 3, command = lambda: send(messageFieldContent.get()))
+
+    else:
+        sendButton = Button(window, text = "Send", width = 6, command = lambda: send(messageFieldContent.get()))
     sendButton.grid(row = 1, column = 1)
 
 if args.gui:

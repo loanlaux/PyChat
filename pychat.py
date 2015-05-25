@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-""" A minimalistic peer-to-peer chat software. """
+""" A minimalistic encrypted peer-to-peer chat software. """
 
 import socket
 import time
 from datetime import datetime
 import sys
 import os
+from base64 import *
 import binascii
 import signal
 import platform
@@ -130,6 +131,11 @@ class textCanvas:
 
 conversation = textCanvas()
 
+# AES padding function
+
+def pad(message):
+    return message + ((16 - len(message) % 16) *  '{' )
+
 # Generates RSA public/ private keys and AES passphrase if encryption is enabled
 
 if args.encryption:
@@ -137,11 +143,28 @@ if args.encryption:
         conversation.append("Generating RSA keys...")
 
     try:
-        key = RSA.generate(2048)
-        privateKey = key.exportKey('PEM')
-        publicKey = key.publickey().exportKey('PEM')
+        rsaKey = RSA.generate(2048)
+        privateKey = rsaKey.exportKey('PEM')
+        publicKey = rsaKey.publickey().exportKey('PEM')
 
         privateKeyObject = RSA.importKey(privateKey)
+
+        if args.verbose:
+            conversation.appendCheck()
+
+    except Exception as e:
+        if args.verbose:
+            conversation.appendError()
+
+        conversation.append(e)
+        signalHandler(None, None, 1)
+
+    if args.verbose:
+        conversation.append("Generating AES passphrase...")
+
+    try:
+        aesPassphrase = os.urandom(16)
+        aesCipher = AES.new(aesPassphrase)
 
         if args.verbose:
             conversation.appendCheck()
@@ -265,8 +288,8 @@ def receive():
 
         if data:
             if args.verbose:
-                if not args.gui:
-                    conversation.removeLastLine()
+                #if not args.gui:
+                #    conversation.removeLastLine()
 
                 conversation.append("Got data. Decoding...")
 
@@ -279,7 +302,7 @@ def receive():
 
             # Check data type
 
-            if json.loads(data)['dataType'] == "key":
+            if json.loads(data)['dataType'] == "key" or json.loads(data)['dataType'] == "passphrase":
                 if not args.encryption:
                     if args.gui:
                         conversationElement.config(state = NORMAL)
@@ -293,12 +316,39 @@ def receive():
                 # Extract recipient key
 
                 if args.verbose:
-                    conversation.append("Received key. Extracting...")
+                    conversation.append("Received " + str(json.loads(data)['dataType']) + ". Extracting...")
 
-                try:
-                    recipientKey = json.loads(data)['key']
-                    global recipientKeyObject
-                    recipientKeyObject = RSA.importKey(recipientKey.encode())
+                if json.loads(data)['dataType'] == 'key':
+                    try:
+                        recipientKey = json.loads(data)['key']
+                        global recipientKeyObject
+                        recipientKeyObject = RSA.importKey(recipientKey.encode())
+
+                        if args.verbose:
+                            conversation.appendCheck()
+
+                    except Exception as e:
+                        if args.verbose:
+                            conversation.appendError()
+
+                        conversation.append(e)
+                        signalHandler(None, None, 1)
+
+                else:
+                    #try:
+                        # RSA decryption
+
+                    global aesPassphrase
+                    global aesCipher
+
+                    aesPassphrase = json.loads(data)['passphrase']
+                    aesPassphrase = binascii.a2b_qp(aesPassphrase)
+                    aesPassphrase = privateKeyObject.decrypt(aesPassphrase)
+
+                    # Decode passphrase and create new cipher object from it
+
+                    aesPassphrase = b64decode(aesPassphrase)
+                    aesCipher = AES.new(aesPassphrase)
 
                     if args.verbose:
                         conversation.appendCheck()
@@ -315,12 +365,12 @@ def receive():
                     if not args.gui:
                         conversation.append("Message: ")
 
-                except Exception as e:
-                    if args.verbose:
-                        conversation.appendError()
+                    #except Exception as e:
+                    #    if args.verbose:
+                    #        conversation.appendError()
 
-                    conversation.append(e)
-                    signalHandler(None, None, 1)
+                    #    conversation.append(e)
+                    #    signalHandler(None, None, 1)
 
             elif json.loads(data)['dataType'] == "message":
                 if args.encryption and recipientKeyObject:
@@ -328,10 +378,15 @@ def receive():
                         if args.verbose:
                             conversation.append("Decrypting message...")
 
+                        # RSA decryption
                         encryptedMessage = json.loads(data)['message']
                         encryptedMessage = binascii.a2b_qp(encryptedMessage)
+                        message = privateKeyObject.decrypt(encryptedMessage)
 
-                        message = str(privateKeyObject.decrypt(encryptedMessage), "utf-8")
+                        # AES decryption
+                        message = aesCipher.decrypt(message).decode("utf-8")
+                        l = message.count('{')
+                        message = message[:len(message)-l]
 
                         if args.verbose:
                             conversation.appendCheck()
@@ -363,7 +418,7 @@ def receive():
 
 def sendKey():
     if args.verbose:
-        conversation.append("Preparing JSON public key object...")
+        conversation.append("Preparing public key JSON object...")
 
     try:
         publicKeyJsonObject = json.dumps({ u"dataType": u"key",
@@ -402,77 +457,152 @@ def sendKey():
         conversation.append(e)
         signalHandler(None, None, 1)
 
-def send(guiMessage = None):
-    if args.gui:
-        if args.encryption and (not guiMessage):
-            sendKey()
+def sendPassphrase():
+    while not recipientKeyObject:
+        pass
 
-        elif guiMessage:
-            # Get the message from the function argument
+    if args.verbose:
+        conversation.append("Encrypting AES passphrase...")
 
-            message = str(guiMessage)
-            message += "\n"
-            unencryptedMessage = message
+    try:
+        global aesPassphrase
+        global recipientKeyObject
 
-            if args.encryption:
-                if args.verbose:
-                    conversation.append("Encrypting message...")
+        # Encrypt passphrase
+        aesPassphrase = b64encode(aesPassphrase)
+        aesPassphrase = recipientKeyObject.encrypt(aesPassphrase, 'x')[0]
+        aesPassphrase = str(binascii.b2a_qp(aesPassphrase), 'utf-8')
 
-                try:
-                    message = message.encode()
-                    message = recipientKeyObject.encrypt(message, 'x')[0]
-                    message = str(binascii.b2a_qp(message), "utf-8")
+    except Exception as e:
+        if args.verbose:
+            conversation.appendError()
 
-                    if args.verbose:
-                        conversation.appendCheck()
+        conversation.append(e)
+        signalHandler(None, None, 1)
 
-                except Exception as e:
-                    if args.verbose:
-                        conversation.appendError()
+    if args.verbose:
+        conversation.append("Preparing AES passphrase JSON object...")
 
-                    conversation.append(e)
+    try:
+        publicKeyJsonObject = json.dumps({ u"dataType": u"passphrase",
+            u"username": args.username,
+            u"time": time.time(),
+            u"passphrase": aesPassphrase
+        })
 
-            if args.verbose:
-                conversation.append("Creating message JSON object...")
+        if args.verbose:
+            conversation.appendCheck()
 
-            # Pack it inside a JSON object, alongside username and sending time
+    except Exception as e:
+        if args.verbose:
+            conversation.appendError()
 
-            messageObject = json.dumps({ u"dataType": "message",
-                u"username": args.username,
-                u"time": time.time(),
-                u"message": message
-            })
+        conversation.append(e)
+        signalHandler(None, None, 1)
 
-            if args.verbose:
-                conversation.appendCheck()
-                conversation.append("Encoding and sending message...")
+    try:
+        if args.verbose:
+            conversation.append("Encoding and sending passphrase...")
 
-            # Choose the right socket object based on the current configuration (server/client)
+        if client:
+            connection.send(publicKeyJsonObject.encode('utf-8'))
 
-            if client:
-                connection.send(messageObject.encode('utf-8'))
+        else:
+            clientConnection.send(publicKeyJsonObject.encode('utf-8'))
 
-            else:
-                clientConnection.send(messageObject.encode('utf-8'))
+        if args.verbose:
+            conversation.appendCheck()
 
-            if args.verbose:
-                conversation.appendCheck()
-
-            # Output the message locally
-
+        if args.gui:
             conversationElement.config(state = NORMAL)
-            conversationElement.insert(END, json.loads(messageObject)['username'] + " - " + datetime.fromtimestamp(json.loads(messageObject)['time']).strftime('%H:%M') + " > " + unencryptedMessage)
+            conversationElement.insert(END, "This session is now encrypted. \n")
             conversationElement.yview(END)
             conversationElement.config(state = DISABLED)
 
-            # Clear the message field
+        else:
+            conversation.append("This session is now encrypted.")
+            conversation.append("Message:")
 
-            messageField.delete(0, 'end')
+    except Exception as e:
+        if args.verbose:
+            conversation.appendError()
 
-    else:
+        conversation.append(e)
+        signalHandler(None, None, 1)
+
+def send(guiMessage = None):
+    if args.encryption and (not guiMessage):
+        sendKey()
+
+        if client:
+            sendPassphrase()
+
+    if args.gui and guiMessage:
+        # Get the message from the function argument
+
+        message = str(guiMessage)
+        message += "\n"
+        unencryptedMessage = message
+
         if args.encryption:
-            sendKey()
+            if args.verbose:
+                conversation.append("Encrypting message...")
 
+            try:
+                # AES encryption
+                message = aesCipher.encrypt(pad(message))
+
+                # RSA encryption
+                message = recipientKeyObject.encrypt(message, 'x')[0]
+                message = str(binascii.b2a_qp(message), "utf-8")
+
+                if args.verbose:
+                    conversation.appendCheck()
+
+            except Exception as e:
+                if args.verbose:
+                    conversation.appendError()
+
+                conversation.append(e)
+
+        if args.verbose:
+            conversation.append("Creating message JSON object...")
+
+        # Pack it inside a JSON object, alongside data type, username and sending time
+
+        messageObject = json.dumps({ u"dataType": "message",
+            u"username": args.username,
+            u"time": time.time(),
+            u"message": message
+        })
+
+        if args.verbose:
+            conversation.appendCheck()
+            conversation.append("Encoding and sending message...")
+
+        # Choose the right socket object based on the current configuration (server/client)
+
+        if client:
+            connection.send(messageObject.encode('utf-8'))
+
+        else:
+            clientConnection.send(messageObject.encode('utf-8'))
+
+        if args.verbose:
+            conversation.appendCheck()
+
+        # Output the message locally
+
+        conversationElement.config(state = NORMAL)
+        conversationElement.insert(END, json.loads(messageObject)['username'] + " - " + datetime.fromtimestamp(json.loads(messageObject)['time']).strftime('%H:%M') + " > " + unencryptedMessage)
+        conversationElement.yview(END)
+        conversationElement.config(state = DISABLED)
+
+        # Clear the message field
+
+        messageField.delete(0, 'end')
+
+    elif not args.gui:
         # Output the first prompt message
 
         if not args.encryption:
@@ -492,7 +622,10 @@ def send(guiMessage = None):
                     conversation.append("Encrypting message...")
 
                 try:
-                    message = message.encode()
+                    # AES encryption
+                    message = aesCipher.encrypt(pad(message))
+
+                    # RSA encryption
                     message = recipientKeyObject.encrypt(message, 'x')[0]
                     message = str(binascii.b2a_qp(message), "utf-8")
 
@@ -563,7 +696,7 @@ if args.gui:
         conversationElement = tkinter.scrolledtext.ScrolledText(window, height = 20, width = 30)
 
     conversationElement.grid(row = 0, column = 0, columnspan = 2)
-    conversationElement.config(state = DISABLED)
+    conversationElement.config(state = DISABLED, wrap = WORD)
 
     # Same thing for the message field
 
@@ -574,10 +707,10 @@ if args.gui:
     # And finally the send button
 
     if sys.platform == "linux" or sys.platform == "linux2":
-        sendButton = Button(window, text = "Send", width = 3, command = lambda: send(messageFieldContent.get()))
+        sendButton = Button(window, text = "Envoyer", width = 3, command = lambda: send(messageFieldContent.get()))
 
     else:
-        sendButton = Button(window, text = "Send", width = 6, command = lambda: send(messageFieldContent.get()))
+        sendButton = Button(window, text = "Envoyer", width = 6, command = lambda: send(messageFieldContent.get()))
     sendButton.grid(row = 1, column = 1)
 
 if args.gui:

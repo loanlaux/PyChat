@@ -134,7 +134,7 @@ conversation = textCanvas()
 # AES padding function
 
 def pad(message):
-    return message + ((16 - len(message) % 16) *  '{' )
+    return message + ((16 - (message.encode().__sizeof__() - 33) % 16) *  '{' )
 
 # Generates RSA public/ private keys and AES passphrase if encryption is enabled
 
@@ -335,42 +335,42 @@ def receive():
                         signalHandler(None, None, 1)
 
                 else:
-                    #try:
+                    try:
                         # RSA decryption
 
-                    global aesPassphrase
-                    global aesCipher
+                        global aesPassphrase
+                        global aesCipher
 
-                    aesPassphrase = json.loads(data)['passphrase']
-                    aesPassphrase = binascii.a2b_qp(aesPassphrase)
-                    aesPassphrase = privateKeyObject.decrypt(aesPassphrase)
+                        aesPassphrase = json.loads(data)['passphrase']
+                        aesPassphrase = binascii.a2b_qp(aesPassphrase)
+                        aesPassphrase = privateKeyObject.decrypt(aesPassphrase)
 
-                    # Decode passphrase and create new cipher object from it
+                        # Decode passphrase and create new cipher object from it
 
-                    aesPassphrase = b64decode(aesPassphrase)
-                    aesCipher = AES.new(aesPassphrase)
+                        aesPassphrase = b64decode(aesPassphrase)
+                        aesCipher = AES.new(aesPassphrase)
 
-                    if args.verbose:
-                        conversation.appendCheck()
+                        if args.verbose:
+                            conversation.appendCheck()
 
-                    if args.gui:
-                        conversationElement.config(state = NORMAL)
-                        conversationElement.insert(END, "This session is now encrypted. \n")
-                        conversationElement.yview(END)
-                        conversationElement.config(state = DISABLED)
+                        if args.gui:
+                            conversationElement.config(state = NORMAL)
+                            conversationElement.insert(END, "This session is now encrypted. \n")
+                            conversationElement.yview(END)
+                            conversationElement.config(state = DISABLED)
 
-                    else:
-                        conversation.append("This session is now encrypted.")
+                        else:
+                            conversation.append("This session is now encrypted.")
 
-                    if not args.gui:
-                        conversation.append("Message: ")
+                        if not args.gui:
+                            conversation.append("Message: ")
 
-                    #except Exception as e:
-                    #    if args.verbose:
-                    #        conversation.appendError()
+                    except Exception as e:
+                        if args.verbose:
+                            conversation.appendError()
 
-                    #    conversation.append(e)
-                    #    signalHandler(None, None, 1)
+                        conversation.append(e)
+                        signalHandler(None, None, 1)
 
             elif json.loads(data)['dataType'] == "message":
                 if args.encryption and recipientKeyObject:
@@ -540,8 +540,7 @@ def send(guiMessage = None):
     if args.gui and guiMessage:
         # Get the message from the function argument
 
-        message = str(guiMessage)
-        message += "\n"
+        message = str(guiMessage) + "\n"
         unencryptedMessage = message
 
         if args.encryption:

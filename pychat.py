@@ -64,6 +64,22 @@ def signalHandler(signal = None, frame = None, silent = None):
         conversation.removeLastLine()
 
     if args.verbose and (not silent):
+        conversation.append("Sending disconnection notice...")
+
+    disconnectionObject = json.dumps({ u"dataType": "status",
+        u"username": args.username,
+        u"time": time.time(),
+        u"status": "disconnected"
+    })
+
+    if client:
+        connection.send(disconnectionObject.encode('utf-8'))
+
+    else:
+        clientConnection.send(disconnectionObject.encode('utf-8'))
+
+    if args.verbose and (not silent):
+        conversation.appendCheck()
         conversation.append("Closing socket...")
 
     connection.close()
@@ -263,6 +279,7 @@ if (not args.gui) or args.verbose:
 recipientKeyObject = None
 
 def receive():
+    global recipientKeyObject
     while True:
         data = None
 
@@ -302,7 +319,7 @@ def receive():
 
             # Check data type
 
-            if json.loads(data)['dataType'] == "key" or json.loads(data)['dataType'] == "passphrase":
+            if json.loads(data)['dataType'] == "key" or json.loads(data)['dataType'] == "passphrase" or json.loads(data)['dataType'] == "status":
                 if not args.encryption:
                     if args.gui:
                         conversationElement.config(state = NORMAL)
@@ -321,7 +338,6 @@ def receive():
                 if json.loads(data)['dataType'] == 'key':
                     try:
                         recipientKey = json.loads(data)['key']
-                        global recipientKeyObject
                         recipientKeyObject = RSA.importKey(recipientKey.encode())
 
                         if args.verbose:
@@ -333,6 +349,19 @@ def receive():
 
                         conversation.append(e)
                         signalHandler(None, None, 1)
+
+                elif json.loads(data)['dataType'] == "status" and json.loads(data)['status'] == "disconnected":
+                    if args.gui:
+                        conversationElement.config(state = NORMAL)
+                        conversationElement.insert(END, datetime.fromtimestamp(json.loads(data)['time']).strftime('%H:%M') + " - " + json.loads(data)['username'] + " just disconnected. \n")
+                        conversationElement.yview(END)
+                        conversationElement.config(state = DISABLED)
+
+                    else:
+                        conversation.append(datetime.fromtimestamp(json.loads(data)['time']).strftime('%H:%M') + " - " + json.loads(data)['username'] + " just disconnected.")
+
+                    if args.verbose:
+                        conversation.appendCheck()
 
                 else:
                     try:
@@ -458,6 +487,9 @@ def sendKey():
         signalHandler(None, None, 1)
 
 def sendPassphrase():
+    global aesPassphrase
+    global recipientKeyObject
+
     while not recipientKeyObject:
         pass
 
@@ -465,8 +497,6 @@ def sendPassphrase():
         conversation.append("Encrypting AES passphrase...")
 
     try:
-        global aesPassphrase
-        global recipientKeyObject
 
         # Encrypt passphrase
         aesPassphrase = b64encode(aesPassphrase)
@@ -673,7 +703,7 @@ if args.gui:
     # Initialize the window
 
     window = Tk()
-    window.title('PyChat')
+    window.title("PyChat")
     window.resizable(width = False, height = False)
     window.geometry('300x400')
 

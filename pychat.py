@@ -736,10 +736,11 @@ if args.gui:
     # And finally the send button
 
     if sys.platform == "linux" or sys.platform == "linux2":
-        sendButton = Button(window, text = "Envoyer", width = 3, command = lambda: send(messageFieldContent.get()))
+        sendButton = Button(window, text = "Send", width = 3, command = lambda: send(messageFieldContent.get()))
 
     else:
-        sendButton = Button(window, text = "Envoyer", width = 6, command = lambda: send(messageFieldContent.get()))
+        sendButton = Button(window, text = "Send", width = 6, command = lambda: send(messageFieldContent.get()))
+
     sendButton.grid(row = 1, column = 1)
 
 if args.gui:

@@ -6,4 +6,4 @@ This software was a project for my 12th grade computer programming course. I'm p
 
 It uses RSA and AES256 in order to provide end-to-end encryption.
 
-Please not that it was only tested on Python 3.
+Please note that it was only tested on Python 3.
